@@ -96,6 +96,8 @@ class BenchmarkDataset(ABC):
         self,
         dataset_path: Optional[str] = None,
         random_seed: int = DEFAULT_SEED,
+        disable_shuffle: bool = False,
+        **kwargs,
     ) -> None:
         """
         Initialize the BenchmarkDataset with an optional dataset path and random
@@ -110,8 +112,8 @@ class BenchmarkDataset(ABC):
         self.dataset_path = dataset_path
         # Set the random seed, ensuring that a None value is replaced with the
         # default seed.
-        self.random_seed = (random_seed
-                            if random_seed is not None else self.DEFAULT_SEED)
+        self.random_seed = random_seed if random_seed is not None else self.DEFAULT_SEED
+        self.disable_shuffle = disable_shuffle
         self.data = None
 
     def apply_multimodal_chat_transformation(
@@ -1064,7 +1066,8 @@ class ShareGPTDataset(BenchmarkDataset):
             if "conversations" in entry and len(entry["conversations"]) >= 2
         ]
         random.seed(self.random_seed)
-        random.shuffle(self.data)
+        if not getattr(self, "disable_shuffle", False):
+            random.shuffle(self.data)
 
     def sample(
         self,
@@ -1169,6 +1172,11 @@ def add_dataset_parser(parser: FlexibleArgumentParser):
         action="store_true",
         help="Do not oversample if the dataset has " \
         "fewer samples than num-prompts.",
+    )
+    parser.add_argument(
+        "--disable-shuffle",
+        action="store_true",
+        help="Disable shuffling of dataset samples for deterministic ordering.",
     )
 
     # group for dataset specific arguments
@@ -1457,7 +1465,9 @@ def get_samples(args, tokenizer) -> list[SampleRequest]:
         args.request_id_prefix = ""
 
     if args.dataset_name == "custom":
-        dataset = CustomDataset(dataset_path=args.dataset_path)
+        dataset = CustomDataset(
+            dataset_path=args.dataset_path, disable_shuffle=args.disable_shuffle
+        )
         input_requests = dataset.sample(
             num_requests=args.num_prompts,
             tokenizer=tokenizer,
@@ -1468,7 +1478,9 @@ def get_samples(args, tokenizer) -> list[SampleRequest]:
         )
 
     elif args.dataset_name == "sonnet":
-        dataset = SonnetDataset(dataset_path=args.dataset_path)
+        dataset = SonnetDataset(
+            dataset_path=args.dataset_path, disable_shuffle=args.disable_shuffle
+        )
         # For the "sonnet" dataset, formatting depends on the backend.
         if args.endpoint_type == "openai-chat":
             input_requests = dataset.sample(
@@ -1583,6 +1595,7 @@ def get_samples(args, tokenizer) -> list[SampleRequest]:
             random_seed=args.seed,
             no_stream=args.no_stream,
             hf_name=args.hf_name,
+            disable_shuffle=args.disable_shuffle,
         ).sample(
             num_requests=args.num_prompts,
             tokenizer=tokenizer,
@@ -1595,9 +1608,11 @@ def get_samples(args, tokenizer) -> list[SampleRequest]:
     else:
         # For datasets that follow a similar structure, use a mapping.
         dataset_mapping = {
-            "spec_bench":
-            lambda: SpecBench(dataset_path=args.dataset_path, 
-                              category=args.spec_bench_category).sample(
+            "spec_bench": lambda: SpecBench(
+                dataset_path=args.dataset_path,
+                category=args.spec_bench_category,
+                disable_shuffle=args.disable_shuffle,
+            ).sample(
                 num_requests=args.num_prompts,
                 tokenizer=tokenizer,
                 output_len=args.spec_bench_output_len,
@@ -1605,7 +1620,9 @@ def get_samples(args, tokenizer) -> list[SampleRequest]:
                 no_oversample=args.no_oversample,
             ),
             "sharegpt": lambda: ShareGPTDataset(
-                random_seed=args.seed, dataset_path=args.dataset_path
+                random_seed=args.seed,
+                dataset_path=args.dataset_path,
+                disable_shuffle=args.disable_shuffle,
             ).sample(
                 tokenizer=tokenizer,
                 num_requests=args.num_prompts,
@@ -1614,7 +1631,9 @@ def get_samples(args, tokenizer) -> list[SampleRequest]:
                 no_oversample=args.no_oversample,
             ),
             "burstgpt": lambda: BurstGPTDataset(
-                random_seed=args.seed, dataset_path=args.dataset_path
+                random_seed=args.seed,
+                dataset_path=args.dataset_path,
+                disable_shuffle=args.disable_shuffle,
             ).sample(
                 tokenizer=tokenizer,
                 num_requests=args.num_prompts,
@@ -1622,7 +1641,9 @@ def get_samples(args, tokenizer) -> list[SampleRequest]:
                 no_oversample=args.no_oversample,
             ),
             "random": lambda: RandomDataset(
-                random_seed=args.seed, dataset_path=args.dataset_path
+                random_seed=args.seed,
+                dataset_path=args.dataset_path,
+                disable_shuffle=args.disable_shuffle,
             ).sample(
                 tokenizer=tokenizer,
                 num_requests=args.num_prompts,
@@ -1634,9 +1655,10 @@ def get_samples(args, tokenizer) -> list[SampleRequest]:
                 batchsize=args.random_batch_size,
                 no_oversample=args.no_oversample,
             ),
-            "random-mm":
-            lambda: RandomMultiModalDataset(
-                random_seed=args.seed, dataset_path=args.dataset_path
+            "random-mm": lambda: RandomMultiModalDataset(
+                random_seed=args.seed,
+                dataset_path=args.dataset_path,
+                disable_shuffle=args.disable_shuffle,
             ).sample(
                 tokenizer=tokenizer,
                 num_requests=args.num_prompts,
@@ -1746,7 +1768,8 @@ class CustomDataset(BenchmarkDataset):
                 "Only JSONL format is supported for CustomDataset.")
 
         random.seed(self.random_seed)
-        random.shuffle(self.data)
+        if not getattr(self, "disable_shuffle", False):
+            random.shuffle(self.data)
 
     def sample(
         self,
@@ -1838,7 +1861,8 @@ class SpecBench(CustomDataset):
                 self.data.append({"prompt": prompt})
 
         random.seed(self.random_seed)
-        random.shuffle(self.data)
+        if not getattr(self, "disable_shuffle", False):
+            random.shuffle(self.data)
 
     def sample(self, **kwargs) -> list:
         # leverage CustomDataset sample
@@ -2041,7 +2065,8 @@ class HuggingFaceDataset(BenchmarkDataset):
             split=self.dataset_split,
             streaming=self.load_stream,
         )
-        self.data = self.data.shuffle(seed=self.random_seed)
+        if not getattr(self, "disable_shuffle", False):
+            self.data = self.data.shuffle(seed=self.random_seed)
 
 
 # -----------------------------------------------------------------------------
@@ -2784,5 +2809,16 @@ class PrefixRepetitionRandomDataset(BenchmarkDataset):
                     )
                 )
 
-        random.shuffle(requests)
+        if token_mismatch_total != 0:
+            sign = "more" if token_mismatch_total > 0 else "fewer"
+            logger.warning(
+                "Across all generated prompts, there were %d %s tokens "
+                "than expected after decoding and re-encoding. This is "
+                "expected due to the imperfect nature of the sampling "
+                "procedure.",
+                abs(token_mismatch_total),
+                sign,
+            )
+        if not getattr(self, "disable_shuffle", False):
+            random.shuffle(requests)
         return requests
