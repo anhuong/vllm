@@ -1444,10 +1444,10 @@ def get_samples(args, tokenizer) -> list[SampleRequest]:
                 "Please consider contributing if you would "
                 "like to add support for additional dataset formats.")
 
-        if dataset_class.IS_MULTIMODAL and args.endpoint_type not in [
-                "openai-chat",
-                "openai-audio",
-        ]:
+        if dataset_class.IS_MULTIMODAL and not (
+            args.backend in ("openai-chat", "openai-audio")
+            or "openai-embeddings-" in args.backend
+        ):
             # multi-modal benchmark is only available on OpenAI Chat
             # endpoint-type.
             raise ValueError(
