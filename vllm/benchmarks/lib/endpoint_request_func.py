@@ -62,7 +62,8 @@ class StreamedResponseHandler:
 @dataclass
 class RequestFuncInput:
     """The input for the request function."""
-    prompt: str
+
+    prompt: str | list[str]
     api_url: str
     prompt_len: int
     output_len: int
@@ -485,7 +486,7 @@ async def async_request_openai_audio(
     return output
 
 
-async def _run_openai_embeddings(
+async def _run_pooling_request(
     session: aiohttp.ClientSession,
     api_url: str,
     payload: dict[str, Any],
@@ -501,7 +502,7 @@ async def _run_openai_embeddings(
             json=payload
         ) as response:
             if response.status == 200:
-                output.latency = time.perf_counter() - st
+                output.ttft = output.latency = time.perf_counter() - st
                 data = await response.json()
                 output.success = True
                 output.generated_text = ""
@@ -542,7 +543,43 @@ async def async_request_openai_embeddings(
     }
     _update_headers_common(headers, request_func_input)
 
-    return await _run_openai_embeddings(
+    return await _run_pooling_request(
+        session,
+        api_url,
+        payload=payload,
+        headers=headers,
+        pbar=pbar,
+    )
+
+
+async def async_request_vllm_rerank(
+    request_func_input: RequestFuncInput,
+    session: aiohttp.ClientSession,
+    pbar: tqdm | None = None,
+) -> RequestFuncOutput:
+    api_url = request_func_input.api_url
+    _validate_api_url(api_url, "vLLM score API", "rerank")
+
+    assert (
+        isinstance(request_func_input.prompt, list)
+        and len(request_func_input.prompt) > 1
+    )
+
+    payload = {
+        "model": request_func_input.model_name
+        if request_func_input.model_name
+        else request_func_input.model,
+        "query": request_func_input.prompt[0],
+        "documents": request_func_input.prompt[1:],
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
+    }
+    _update_headers_common(headers, request_func_input)
+
+    return await _run_pooling_request(
         session,
         api_url,
         payload=payload,
@@ -578,7 +615,7 @@ async def async_request_openai_embeddings_chat(
     }
     _update_headers_common(headers, request_func_input)
 
-    return await _run_openai_embeddings(
+    return await _run_pooling_request(
         session,
         api_url,
         payload=payload,
@@ -651,6 +688,61 @@ async def async_request_openai_embeddings_vlm2vec(
     )
 
 
+async def async_request_infinity_embeddings(
+    request_func_input: RequestFuncInput,
+    session: aiohttp.ClientSession,
+    pbar: tqdm | None = None,
+) -> RequestFuncOutput:
+    api_url = request_func_input.api_url
+    _validate_api_url(api_url, "Infinity Embeddings API", "embeddings")
+
+    payload = {
+        "model": request_func_input.model_name
+        if request_func_input.model_name
+        else request_func_input.model,
+    }
+
+    if request_func_input.prompt:
+        payload["input"] = request_func_input.prompt
+    else:
+        mm_content = request_func_input.multi_modal_content
+        assert isinstance(mm_content, dict)
+
+        mm_type = mm_content["type"]
+        payload["input"] = mm_content[mm_type]["url"]
+        payload["modality"] = mm_type.split("_", 1)[0]
+
+    _update_payload_common(payload, request_func_input)
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
+    }
+    _update_headers_common(headers, request_func_input)
+
+    return await _run_pooling_request(
+        session,
+        api_url,
+        payload=payload,
+        headers=headers,
+        pbar=pbar,
+    )
+
+
+async def async_request_infinity_embeddings_clip(
+    request_func_input: RequestFuncInput,
+    session: aiohttp.ClientSession,
+    pbar: tqdm | None = None,
+) -> RequestFuncOutput:
+    _preprocess_clip(request_func_input)
+
+    return await async_request_infinity_embeddings(
+        request_func_input,
+        session,
+        pbar=pbar,
+    )
+
+
 # TODO: Add more request functions for different API protocols.
 ASYNC_REQUEST_FUNCS = {
     "vllm": async_request_openai_completions,
@@ -661,6 +753,11 @@ ASYNC_REQUEST_FUNCS = {
     "openai-embeddings-chat": async_request_openai_embeddings_chat,
     "openai-embeddings-clip": async_request_openai_embeddings_clip,
     "openai-embeddings-vlm2vec": async_request_openai_embeddings_vlm2vec,
+    # Infinity embedding server: https://github.com/michaelfeil/infinity
+    "infinity-embeddings": async_request_infinity_embeddings,
+    "infinity-embeddings-clip": async_request_infinity_embeddings_clip,
+    # (Infinity embedding server does not support vlm2vec)
+    "vllm-rerank": async_request_vllm_rerank,
 }
 
 OPENAI_COMPATIBLE_BACKENDS = [

@@ -502,6 +502,7 @@ class RandomDataset(BenchmarkDataset):
         # Ensure the lower bound for output length is at least 1 to
         # prevent sampling 0 tokens.
         output_low = max(output_low, 1)
+        output_high = max(output_high, 1)
 
         if input_low > input_high:
             raise ValueError(
@@ -568,6 +569,112 @@ class RandomDataset(BenchmarkDataset):
         total_input_len = len(re_encoded_sequence)
 
         return prompt, total_input_len
+
+
+# -----------------------------------------------------------------------------
+# Random Dataset Implementation (Synthetic Data)
+# -----------------------------------------------------------------------------
+
+
+class RandomDatasetForReranking(RandomDataset):
+    """
+    Random dataset specialized for the needs of scoring:
+    - Batches of inputs
+    - Inputs composed of pairs
+    """
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+
+    def sample(
+        self,
+        tokenizer: PreTrainedTokenizerBase,
+        num_requests: int,
+        request_id_prefix: str = "",
+        range_ratio: float = RandomDataset.DEFAULT_RANGE_RATIO,
+        input_len: int = RandomDataset.DEFAULT_INPUT_LEN,
+        batchsize: int = 1,
+        is_reranker: bool = True,
+        **kwargs,
+    ) -> list[SampleRequest]:
+        n_sep_tokens = int(is_reranker)
+
+        query_len_param = (input_len // 2) - n_sep_tokens if is_reranker else input_len
+
+        query_lens, _, query_offsets = self.get_sampling_params(
+            1, range_ratio, query_len_param, 0, tokenizer
+        )
+
+        query_len = int(query_lens[0])
+
+        if not is_reranker:
+            assert num_requests > 1 and batchsize > 1
+            num_requests -= 1
+            batchsize -= 1
+            doc_len_param = input_len
+        else:
+            doc_len_param = input_len - query_len - n_sep_tokens
+
+        doc_lens, _, doc_offsets = self.get_sampling_params(
+            num_requests, range_ratio, doc_len_param, 0, tokenizer
+        )
+        vocab_size = tokenizer.vocab_size
+
+        query_prompt, query_input_len, token_mismatch_total = (
+            self.generate_token_sequence(
+                tokenizer=tokenizer,
+                prefix_token_ids=[],
+                prefix_len=0,
+                vocab_size=vocab_size,
+                input_len=query_len,
+                offset=int(query_offsets[0]),
+                index=0,
+            )
+        )
+
+        requests = []
+        for i in range(num_requests):
+            prompt, total_input_len, token_mismatch = self.generate_token_sequence(  # noqa: E501
+                tokenizer=tokenizer,
+                prefix_token_ids=[],
+                prefix_len=0,
+                vocab_size=vocab_size,
+                input_len=int(doc_lens[i]),
+                offset=int(doc_offsets[i]),
+                index=i + 1,
+            )
+            token_mismatch_total += token_mismatch
+            requests.append((prompt, total_input_len))
+
+        batch_requests = []
+        # Create batched requests
+        for i in range(0, num_requests, batchsize):
+            batch = requests[i : i + batchsize]
+            query_contrib = (
+                (query_input_len + n_sep_tokens) * len(batch)
+                if is_reranker
+                else query_input_len
+            )
+            batch_requests.append(
+                SampleRequest(
+                    prompt=[query_prompt] + [req[0] for req in batch],
+                    prompt_len=query_contrib + sum(req[1] for req in batch),
+                    expected_output_len=0,
+                    request_id=request_id_prefix + str(i // batchsize),
+                )
+            )
+
+        if token_mismatch_total != 0:
+            logger.warning(
+                "Across all generated prompts, there were %d %s tokens "
+                "than expected after decoding and re-encoding. This is "
+                "expected due to the imperfect nature of the sampling "
+                "procedure.",
+                abs(token_mismatch_total),
+                "more" if token_mismatch_total > 0 else "fewer",
+            )
+
+        return batch_requests
 
 
 # -----------------------------------------------------------------------------
@@ -1032,8 +1139,16 @@ def add_dataset_parser(parser: FlexibleArgumentParser):
         type=str,
         default="random",
         choices=[
-            "sharegpt", "burstgpt", "sonnet", "random", "random-mm", "hf", 
-            "custom", "prefix_repetition", "spec_bench"
+            "sharegpt",
+            "burstgpt",
+            "sonnet",
+            "random",
+            "random-mm",
+            "random-rerank",
+            "hf",
+            "custom",
+            "prefix_repetition",
+            "spec_bench",
         ],
         help="Name of the dataset to benchmark on.",
     )
@@ -1177,6 +1292,14 @@ def add_dataset_parser(parser: FlexibleArgumentParser):
         default=1,
         help=("Batch size for random sampling. "
               "Only used for embeddings benchmark."),
+    )
+    random_group.add_argument(
+        "--no-reranker",
+        action="store_true",
+        help=(
+            "Whether the model supports reranking natively."
+            " Only used for reranker benchmark."
+        ),
     )
 
     # random multimodal dataset options
@@ -1528,9 +1651,23 @@ def get_samples(args, tokenizer) -> list[SampleRequest]:
                 request_id_prefix=args.request_id_prefix,
                 no_oversample=args.no_oversample,
             ),
-            "prefix_repetition":
-            lambda: PrefixRepetitionRandomDataset(
-                random_seed=args.seed, dataset_path=args.dataset_path
+            "random-rerank": lambda: RandomDatasetForReranking(
+                random_seed=args.seed,
+                dataset_path=args.dataset_path,
+                disable_shuffle=args.disable_shuffle,
+            ).sample(
+                tokenizer=tokenizer,
+                num_requests=args.num_prompts,
+                input_len=args.random_input_len,
+                range_ratio=args.random_range_ratio,
+                request_id_prefix=args.request_id_prefix,
+                batchsize=args.random_batch_size,
+                is_reranker=not args.no_reranker,
+            ),
+            "prefix_repetition": lambda: PrefixRepetitionRandomDataset(
+                random_seed=args.seed,
+                dataset_path=args.dataset_path,
+                disable_shuffle=args.disable_shuffle,
             ).sample(
                 tokenizer=tokenizer,
                 num_requests=args.num_prompts,
