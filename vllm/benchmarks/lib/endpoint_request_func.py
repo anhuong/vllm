@@ -116,14 +116,14 @@ def _update_payload_common(
         payload.update(request_func_input.extra_body)
 
 
-def _update_headers_common(
-    headers: dict[str, Any],
-    request_func_input: RequestFuncInput,
-) -> None:
-    if request_func_input.extra_headers:
-        headers |= request_func_input.extra_headers
-    if request_func_input.request_id:
-        headers["x-request-id"] = request_func_input.request_id
+# def _update_headers_common(
+#     headers: dict[str, Any],
+#     request_func_input: RequestFuncInput,
+# ) -> None:
+#     if request_func_input.extra_headers:
+#         headers |= request_func_input.extra_headers
+#     if request_func_input.request_id:
+#         headers["x-request-id"] = request_func_input.request_id
 
 
 async def async_request_openai_completions(
@@ -161,7 +161,7 @@ async def async_request_openai_completions(
     headers = {
         "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
     }
-    _update_headers_common(headers, request_func_input)
+    # _update_headers_common(headers, request_func_input)
 
     output = RequestFuncOutput()
     output.prompt_len = request_func_input.prompt_len
@@ -302,7 +302,7 @@ async def async_request_openai_chat_completions(
         "Content-Type": "application/json",
         "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
     }
-    _update_headers_common(headers, request_func_input)
+    # _update_headers_common(headers, request_func_input)
 
     output = RequestFuncOutput()
     output.prompt_len = request_func_input.prompt_len
@@ -405,7 +405,7 @@ async def async_request_openai_audio(
     headers = {
         "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
     }
-    _update_headers_common(headers, request_func_input)
+    # _update_headers_common(headers, request_func_input)
 
     # Send audio file
     def to_bytes(y, sr):
@@ -541,7 +541,7 @@ async def async_request_openai_embeddings(
         "Content-Type": "application/json",
         "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
     }
-    _update_headers_common(headers, request_func_input)
+    # _update_headers_common(headers, request_func_input)
 
     return await _run_pooling_request(
         session,
@@ -577,7 +577,7 @@ async def async_request_vllm_rerank(
         "Content-Type": "application/json",
         "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
     }
-    _update_headers_common(headers, request_func_input)
+    # _update_headers_common(headers, request_func_input)
 
     return await _run_pooling_request(
         session,
@@ -613,7 +613,7 @@ async def async_request_openai_embeddings_chat(
         "Content-Type": "application/json",
         "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
     }
-    _update_headers_common(headers, request_func_input)
+    # _update_headers_common(headers, request_func_input)
 
     return await _run_pooling_request(
         session,
@@ -718,7 +718,7 @@ async def async_request_infinity_embeddings(
         "Content-Type": "application/json",
         "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
     }
-    _update_headers_common(headers, request_func_input)
+    # _update_headers_common(headers, request_func_input)
 
     return await _run_pooling_request(
         session,
