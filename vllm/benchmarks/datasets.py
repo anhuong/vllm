@@ -622,7 +622,7 @@ class RandomDatasetForReranking(RandomDataset):
         )
         vocab_size = tokenizer.vocab_size
 
-        query_prompt, query_input_len, token_mismatch_total = (
+        query_prompt, query_input_len = (
             self.generate_token_sequence(
                 tokenizer=tokenizer,
                 prefix_token_ids=[],
@@ -636,7 +636,7 @@ class RandomDatasetForReranking(RandomDataset):
 
         requests = []
         for i in range(num_requests):
-            prompt, total_input_len, token_mismatch = self.generate_token_sequence(  # noqa: E501
+            prompt, total_input_len = self.generate_token_sequence(  # noqa: E501
                 tokenizer=tokenizer,
                 prefix_token_ids=[],
                 prefix_len=0,
@@ -645,7 +645,6 @@ class RandomDatasetForReranking(RandomDataset):
                 offset=int(doc_offsets[i]),
                 index=i + 1,
             )
-            token_mismatch_total += token_mismatch
             requests.append((prompt, total_input_len))
 
         batch_requests = []
@@ -664,16 +663,6 @@ class RandomDatasetForReranking(RandomDataset):
                     expected_output_len=0,
                     request_id=request_id_prefix + str(i // batchsize),
                 )
-            )
-
-        if token_mismatch_total != 0:
-            logger.warning(
-                "Across all generated prompts, there were %d %s tokens "
-                "than expected after decoding and re-encoding. This is "
-                "expected due to the imperfect nature of the sampling "
-                "procedure.",
-                abs(token_mismatch_total),
-                "more" if token_mismatch_total > 0 else "fewer",
             )
 
         return batch_requests
@@ -2809,16 +2798,16 @@ class PrefixRepetitionRandomDataset(BenchmarkDataset):
                     )
                 )
 
-        if token_mismatch_total != 0:
-            sign = "more" if token_mismatch_total > 0 else "fewer"
-            logger.warning(
-                "Across all generated prompts, there were %d %s tokens "
-                "than expected after decoding and re-encoding. This is "
-                "expected due to the imperfect nature of the sampling "
-                "procedure.",
-                abs(token_mismatch_total),
-                sign,
-            )
+        # if token_mismatch_total != 0:
+        #     sign = "more" if token_mismatch_total > 0 else "fewer"
+        #     logger.warning(
+        #         "Across all generated prompts, there were %d %s tokens "
+        #         "than expected after decoding and re-encoding. This is "
+        #         "expected due to the imperfect nature of the sampling "
+        #         "procedure.",
+        #         abs(token_mismatch_total),
+        #         sign,
+        #     )
         if not getattr(self, "disable_shuffle", False):
             random.shuffle(requests)
         return requests
