@@ -1122,10 +1122,7 @@ async def main_async(args: argparse.Namespace) -> dict[str, Any]:
                 "top_k": args.top_k,
                 "min_p": args.min_p,
                 "temperature": args.temperature,
-                "frequency_penalty": args.frequency_penalty,
-                "presence_penalty": args.presence_penalty,
-                "repetition_penalty": args.repetition_penalty,
-            }.items()
+            }.items() if v is not None
             if v is not None
         }
 
