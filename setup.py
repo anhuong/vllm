@@ -494,6 +494,9 @@ def get_gaudi_sw_version():
 
 
 def get_vllm_version() -> str:
+    if env_version := os.getenv("VLLM_VERSION_OVERRIDE"):
+        return env_version
+
     version = get_version(write_to="vllm/_version.py")
     sep = "+" if "+" not in version else "."  # dev versions might contain +
 
