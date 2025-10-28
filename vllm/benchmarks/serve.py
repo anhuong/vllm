@@ -1123,7 +1123,6 @@ async def main_async(args: argparse.Namespace) -> dict[str, Any]:
                 "min_p": args.min_p,
                 "temperature": args.temperature,
             }.items() if v is not None
-            if v is not None
         }
 
         # Sampling parameters are only supported by openai-compatible backend.
