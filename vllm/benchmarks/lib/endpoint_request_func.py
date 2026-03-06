@@ -8,6 +8,7 @@ import os
 import sys
 import time
 import traceback
+from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from typing import Any, Literal, Optional, Protocol, Union
 
@@ -70,6 +71,7 @@ class RequestFuncInput:
     model: str
     model_name: Optional[str] = None
     logprobs: Optional[int] = None
+    extra_headers: Optional[dict] = None
     extra_body: Optional[dict] = None
     multi_modal_content: Optional[Union[dict, list[dict]]] = None
     ignore_eos: bool = False
@@ -90,6 +92,17 @@ class RequestFuncOutput:
     tpot: float = 0.0  # avg next-token latencies
     prompt_len: int = 0
     error: str = ""
+    start_time: float = 0.0
+
+
+class RequestFunc(Protocol):
+    def __call__(
+        self,
+        request_func_input: RequestFuncInput,
+        session: aiohttp.ClientSession,
+        pbar: Optional[tqdm] = None,
+    ) -> Awaitable[RequestFuncOutput]:
+        ...
 
 
 def _validate_api_url(
@@ -162,12 +175,17 @@ async def async_request_openai_completions(
         "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
     }
     # _update_headers_common(headers, request_func_input)
+    if request_func_input.extra_headers:
+        headers |= request_func_input.extra_headers
+    if request_func_input.request_id:
+        headers["x-request-id"] = request_func_input.request_id
 
     output = RequestFuncOutput()
     output.prompt_len = request_func_input.prompt_len
 
     generated_text = ""
     st = time.perf_counter()
+    output.start_time = st
     most_recent_timestamp = st
     try:
         async with session.post(url=api_url, json=payload,
@@ -302,7 +320,10 @@ async def async_request_openai_chat_completions(
         "Content-Type": "application/json",
         "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
     }
-    # _update_headers_common(headers, request_func_input)
+    if request_func_input.extra_headers:
+        headers |= request_func_input.extra_headers
+    if request_func_input.request_id:
+        headers["x-request-id"] = request_func_input.request_id
 
     output = RequestFuncOutput()
     output.prompt_len = request_func_input.prompt_len
@@ -310,6 +331,7 @@ async def async_request_openai_chat_completions(
     generated_text = ""
     ttft = 0.0
     st = time.perf_counter()
+    output.start_time = st
     most_recent_timestamp = st
     try:
         async with session.post(url=api_url, json=payload,
@@ -406,6 +428,10 @@ async def async_request_openai_audio(
         "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
     }
     # _update_headers_common(headers, request_func_input)
+    if request_func_input.extra_headers:
+        headers |= request_func_input.extra_headers
+    if request_func_input.request_id:
+        headers["x-request-id"] = request_func_input.request_id
 
     # Send audio file
     def to_bytes(y, sr):
@@ -429,6 +455,7 @@ async def async_request_openai_audio(
         generated_text = ""
         ttft = 0.0
         st = time.perf_counter()
+        output.start_time = st
         most_recent_timestamp = st
         try:
             async with session.post(url=api_url,
@@ -495,6 +522,7 @@ async def _run_pooling_request(
 ) -> RequestFuncOutput:
     output = RequestFuncOutput()
     st = time.perf_counter()
+    output.start_time = st
     try:
         async with session.post(
             url=api_url,
@@ -744,7 +772,7 @@ async def async_request_infinity_embeddings_clip(
 
 
 # TODO: Add more request functions for different API protocols.
-ASYNC_REQUEST_FUNCS = {
+ASYNC_REQUEST_FUNCS: dict[str, RequestFunc] = {
     "vllm": async_request_openai_completions,
     "openai": async_request_openai_completions,
     "openai-chat": async_request_openai_chat_completions,

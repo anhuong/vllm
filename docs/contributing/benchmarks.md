@@ -1,6 +1,10 @@
+---
+toc_depth: 4
+---
+
 # Benchmark Suites
 
-vLLM contains two sets of benchmarks:
+vLLM provides comprehensive benchmarking tools for performance testing and evaluation:
 
 - **[Benchmark CLI]**: `vllm bench` CLI tools and specialized benchmark scripts for interactive performance testing
 - **[Performance benchmarks][performance-benchmarks]**: Automated CI benchmarks for development
@@ -64,13 +68,13 @@ Legend:
 <details class="admonition abstract" markdown="1">
 <summary>Show more</summary>
 
-First start serving your model:
+First start serving your model
 
 ```bash
 vllm serve NousResearch/Hermes-3-Llama-3.1-8B
 ```
 
-Then run the benchmarking script:
+Then run the benchmarking script
 
 ```bash
 # download dataset
@@ -84,7 +88,7 @@ vllm bench serve \
   --num-prompts 10
 ```
 
-If successful, you will see the following output:
+If successful, you will see the following output
 
 ```text
 ============ Serving Benchmark Result ============
@@ -928,22 +932,22 @@ The performance benchmarks are used for development to confirm whether new chang
 
 ### Manually Trigger the benchmark
 
-Use [vllm-ci-test-repo images](https://gallery.ecr.aws/q9t5s3a7/vllm-ci-test-repo) with vLLM benchmark suite.  
+Use [vllm-ci-test-repo images](https://gallery.ecr.aws/q9t5s3a7/vllm-ci-test-repo) with vLLM benchmark suite.
 For CPU environment, please use the image with "-cpu" postfix.
 
-Here is an example for docker run command for CPU.  
+Here is an example for docker run command for CPU.
 
 ```bash
 docker run -it --entrypoint /bin/bash -v /data/huggingface:/root/.cache/huggingface  -e HF_TOKEN=''  --shm-size=16g --name vllm-cpu-ci  public.ecr.aws/q9t5s3a7/vllm-ci-test-repo:1da94e673c257373280026f75ceb4effac80e892-cpu
 ```
 
-Then, run below command inside the docker instance.  
+Then, run below command inside the docker instance.
 
 ```bash
 bash .buildkite/nightly-benchmarks/scripts/run-performance-benchmarks.sh
 ```
 
-When run, benchmark script generates results under **benchmark/results** folder, along with the benchmark_results.md and benchmark_results.json.  
+When run, benchmark script generates results under **benchmark/results** folder, along with the benchmark_results.md and benchmark_results.json.
 
 #### Runtime environment variables
 
